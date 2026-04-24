@@ -1,32 +1,4 @@
-"""
-self_pruning_network.py
-========================
-Tredence AI Engineering Internship – Case Study
-"The Self-Pruning Neural Network"
 
-Implements a feed-forward classifier for CIFAR-10 whose weights are gated by
-learnable scalars. An L1 sparsity penalty drives most gates to zero during
-training, effectively pruning the network on-the-fly without any post-training
-surgery.
-
-Pipeline
---------
-1. PrunableLinear   – custom nn.Module with per-weight sigmoid gates
-2. SelfPruningNet   – classifier built from PrunableLinear layers
-3. Training loop    – Total Loss = CrossEntropy + lambda * Sigma|gates|
-4. Evaluation       – test accuracy + sparsity level (% gates < threshold)
-5. Analysis         – plots for gate distribution and training curves
-
-Usage
------
-    pip install torch torchvision matplotlib
-    python self_pruning_network.py
-
-    # Override defaults via CLI:
-    python self_pruning_network.py --epochs 30 --lambdas 1e-5 1e-4 1e-3
-
-Author : [Your Name]
-"""
 
 # ─── Imports ──────────────────────────────────────────────────────────────────
 import argparse
@@ -45,47 +17,9 @@ from torchvision import datasets, transforms
 from torch.utils.data import DataLoader
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Part 1 – PrunableLinear Layer
-# ─────────────────────────────────────────────────────────────────────────────
 
 class PrunableLinear(nn.Module):
-    """
-    A learnable-gate drop-in replacement for nn.Linear.
-
-    Mechanism
-    ---------
-    Every scalar weight w_{i,j} has a matching *gate score* s_{i,j}
-    (same tensor shape).  The gate is obtained via sigmoid:
-
-        gate_{i,j} = sigmoid(s_{i,j})  in (0, 1)
-
-    The effective "pruned" weight used in the forward pass is:
-
-        pruned_weight_{i,j} = w_{i,j} * gate_{i,j}
-
-    When a gate collapses to ~0 (driven by the L1 sparsity loss in the total
-    objective), the corresponding weight contributes nothing to any output
-    activation – the connection is effectively pruned.
-
-    Gradient flow
-    -------------
-    Both `weight` and `gate_scores` are registered nn.Parameters, so the
-    optimizer updates them jointly.  Sigmoid and element-wise multiplication
-    are both differentiable:
-
-        dL/ds_{i,j} = (dL/d pruned_w_{i,j}) * w_{i,j} * sigmoid(s)(1-sigmoid(s))
-                    + lambda * sigmoid(s_{i,j})(1-sigmoid(s_{i,j}))   <- sparsity term
-
-    The second term is always positive, so the sparsity penalty persistently
-    pushes gate scores toward -inf, i.e. gates toward 0.  Important weights
-    resist because closing their gates would raise the classification loss.
-
-    Parameters
-    ----------
-    in_features  : int
-    out_features : int
-    """
+   
 
     def __init__(self, in_features: int, out_features: int) -> None:
         super().__init__()
@@ -133,26 +67,10 @@ class PrunableLinear(nn.Module):
                 f"out_features={self.out_features}")
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Part 2 – Self-Pruning Network
-# ─────────────────────────────────────────────────────────────────────────────
+
 
 class SelfPruningNet(nn.Module):
-    """
-    Feed-forward classifier for CIFAR-10 (32x32 RGB -> 10 classes).
-
-    Architecture
-    ────────────
-    Flatten(3072)
-        -> PrunableLinear(3072, 1024) -> BatchNorm1d -> ReLU
-        -> Dropout(0.3)
-        -> PrunableLinear(1024,  512) -> BatchNorm1d -> ReLU
-        -> PrunableLinear( 512,  256) -> BatchNorm1d -> ReLU
-        -> PrunableLinear( 256,   10) -> log-softmax
-
-    Every weight in every linear layer is gated, so the network can prune any
-    of its connections during training.
-    """
+    
 
     def __init__(self) -> None:
         super().__init__()
@@ -196,9 +114,7 @@ class SelfPruningNet(nn.Module):
         ).numpy()
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Data Loading
-# ─────────────────────────────────────────────────────────────────────────────
+
 
 def get_cifar10_loaders(batch_size: int = 128, data_root: str = "./data"):
     """Download CIFAR-10 and return (train_loader, test_loader)."""
@@ -226,19 +142,10 @@ def get_cifar10_loaders(batch_size: int = 128, data_root: str = "./data"):
     return train_loader, test_loader
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Part 3 – Training & Evaluation
-# ─────────────────────────────────────────────────────────────────────────────
+
 
 def train_one_epoch(model, loader, optimizer, lam, device):
-    """
-    One training epoch.
-
-    Total Loss = NLLLoss  +  lambda * SparsityLoss
-               = CrossEntropy  +  lambda * sum_over_all_gates( sigmoid(s) )
-
-    Returns (avg_total_loss, avg_cls_loss, avg_sp_loss, train_acc_percent).
-    """
+   
     model.train()
     total_loss = cls_loss_sum = sp_loss_sum = 0.0
     correct = 0
@@ -323,9 +230,7 @@ def run_experiment(lam, train_loader, test_loader,
             "sparsity": sparsity, "gates": gates, "history": history}
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Plotting
-# ─────────────────────────────────────────────────────────────────────────────
+
 
 def plot_gate_distribution(results_list, save_path="gate_distribution.png",
                            prune_threshold=0.05):
@@ -385,109 +290,10 @@ def plot_training_curves(results_list, save_path="training_curves.png"):
     print(f"  [Saved] {save_path}")
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Report Generation
-# ─────────────────────────────────────────────────────────────────────────────
-
-def generate_report(results_list, save_path="report.md"):
-    """Write the Markdown report specified in the case study."""
-    best         = max(results_list, key=lambda r: r["test_acc"])
-    most_sparse  = max(results_list, key=lambda r: r["sparsity"])
-
-    lines = [
-        "# Self-Pruning Neural Network — Report\n",
-        "**Tredence AI Engineering Internship – Case Study**\n\n---\n\n",
-
-        "## 1. Why Does an L1 Penalty on Sigmoid Gates Encourage Sparsity?\n\n",
-
-        "The total training loss is:\n\n",
-        "```\n",
-        "Total Loss = CrossEntropyLoss  +  lambda * SparsityLoss\n",
-        "SparsityLoss = sum over all layers, all (i,j):  sigmoid(gate_score_{i,j})\n",
-        "```\n\n",
-
-        "**Why L1?**  The L1 norm is famous in statistics (Lasso) for producing "
-        "sparse solutions. The key geometric reason is that the L1 ball has "
-        "corners on the coordinate axes, so the constrained optimum is often "
-        "found exactly at a corner where many coordinates equal zero. By contrast, "
-        "the L2 ball is smooth and round, so it merely shrinks weights uniformly "
-        "without zeroing them.\n\n",
-
-        "**Gradient analysis.** The partial derivative of the sparsity term "
-        "with respect to a single gate score s is:\n\n",
-        "```\n",
-        "d(SparsityLoss)/ds = sigmoid(s) * (1 - sigmoid(s))  > 0   always\n",
-        "```\n\n",
-        "Because this is **always positive**, gradient descent (Adam) will "
-        "continuously push each gate score toward -infinity, driving "
-        "sigmoid(s) -> 0. The classification loss simultaneously resists "
-        "this collapse for important weights, because closing a gate on a "
-        "useful weight would raise the classification loss. The result is a "
-        "natural competition: unimportant connections are pruned; important "
-        "ones survive. This competition produces a characteristic "
-        "**bimodal distribution** of gate values — a tall spike near 0 "
-        "(pruned) and a secondary cluster at higher values (survivors).\n\n",
-
-        "A larger lambda amplifies the sparsity gradient, pruning more "
-        "aggressively at the potential cost of accuracy.\n\n",
-
-        "---\n\n",
-        "## 2. Results: Lambda Trade-Off\n\n",
-        "| Lambda | Test Accuracy (%) | Sparsity Level (%) | Notes |\n",
-        "|:------:|:-----------------:|:------------------:|:------|\n",
-    ]
-
-    for res in sorted(results_list, key=lambda r: r["lam"]):
-        notes = []
-        if res["lam"] == best["lam"]:       notes.append("Best accuracy")
-        if res["lam"] == most_sparse["lam"]: notes.append("Most sparse")
-        note_str = " & ".join(notes) if notes else ""
-        lines.append(
-            f"| `{res['lam']:.0e}` | {res['test_acc']:.2f} | "
-            f"{res['sparsity']:.2f} | {note_str} |\n"
-        )
-
-    lines += [
-        "\n**Interpretation.** Higher lambda -> more gates pruned -> sparser "
-        "network -> potential accuracy drop. The medium-lambda setting typically "
-        "offers the best accuracy-sparsity trade-off.\n\n",
-
-        "---\n\n",
-        "## 3. Gate Value Distribution\n\n",
-        "![Gate Distribution](gate_distribution.png)\n\n",
-        "Histograms of sigmoid(gate_scores) after training. "
-        "A successful pruning result shows:\n",
-        "- **Large spike near 0** — most weights have been pruned.\n",
-        "- **Secondary cluster** at higher values — the surviving important connections.\n\n",
-        "Higher lambda shifts more mass into the zero-spike.\n\n",
-
-        "---\n\n",
-        "## 4. Training Curves\n\n",
-        "![Training Curves](training_curves.png)\n\n",
-        "Total training loss and accuracy over epochs for all lambda settings. "
-        "Higher-lambda models show a larger initial total loss "
-        "(stronger sparsity penalty) that decreases as gates collapse.\n\n",
-
-        "---\n\n",
-        "## 5. Conclusion\n\n",
-        f"The self-pruning mechanism successfully learns to remove unnecessary "
-        f"weights *during* training — no post-hoc pruning step is needed. "
-        f"The best model (lambda={best['lam']:.0e}) achieves "
-        f"**{best['test_acc']:.2f}% test accuracy** while pruning "
-        f"**{best['sparsity']:.2f}%** of its weights. "
-        f"Surviving connections are exactly those the network needs: they "
-        f"resist the L1 sparsity pressure because their contribution to low "
-        f"classification loss outweighs the sparsity penalty.\n",
-    ]
-
-    with open(save_path, "w") as fh:
-        fh.writelines(lines)
-    print(f"  [Saved] {save_path}")
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Entry Point
-# ─────────────────────────────────────────────────────────────────────────────
+
+
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Self-Pruning Neural Network")
